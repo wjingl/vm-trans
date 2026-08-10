@@ -67,5 +67,8 @@ def load_config(path: str) -> dict:
 
 
 def save_config(path: str, cfg: dict) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        raise ValueError(f"配置文件 {path} 无法写入: {e}")

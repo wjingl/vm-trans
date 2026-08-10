@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
 )
 
 import transfer
-from config import config_path, ensure_config, save_config
+from config import DEFAULT_CONFIG, config_path, ensure_config, save_config
 
 
 class TransferWorker(QThread):
@@ -29,10 +29,17 @@ class TransferWorker(QThread):
 
     def run(self):
         all_ok = True
-        for vm in self.vms:
-            ok = transfer.transfer_to_vm(vm, self.items, self.log_signal.emit)
-            all_ok = all_ok and ok
-        self.finished_signal.emit(all_ok)
+        try:
+            for vm in self.vms:
+                ok = transfer.transfer_to_vm(vm, self.items, self.log_signal.emit)
+                all_ok = all_ok and ok
+        except Exception as e:
+            # 传输层已兜底;此处仅防御意外异常(--noconsole 下 stderr 不可见,必须记入日志)
+            all_ok = False
+            self.log_signal.emit(f"✗ 未预期错误: {e}")
+        finally:
+            # run() 无论发生什么都必须发出 finished_signal,否则传输按钮永不恢复
+            self.finished_signal.emit(all_ok)
 
 
 class ConfigDialog(QDialog):
@@ -128,8 +135,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("VM Trans — 拖拽传文件到虚拟机")
         self.resize(420, 380)
-        self.cfg = ensure_config(config_path())
+        try:
+            self.cfg = ensure_config(config_path())
+        except (ValueError, OSError) as e:
+            # --noconsole 下不能直接崩溃;提示后回退默认配置,用户仍可通过「配置」修复
+            QMessageBox.critical(self, "配置错误", f"{e}\n已改用默认配置,可通过「配置」对话框修复。")
+            self.cfg = DEFAULT_CONFIG
         self.dropped = []
+        self.dropped_keys = set()  # Windows 下去重键(os.path.normcase)
         self.worker = None  # 传输线程;None 或已结束的线程不影响关闭
 
         central = QWidget()
@@ -187,8 +200,10 @@ class MainWindow(QMainWindow):
     def add_dropped(self, path: str) -> None:
         # 统一为正斜杠,避免 Windows 下 normpath 产生反斜杠导致去重/测试不一致
         norm = os.path.normpath(path).replace("\\", "/")
-        if norm not in self.dropped:
+        key = os.path.normcase(norm)  # Windows 大小写不敏感去重
+        if key not in self.dropped_keys:
             self.dropped.append(norm)
+            self.dropped_keys.add(key)
             self.dropped_list.addItem(norm)
 
     # ---- 界面逻辑 ----

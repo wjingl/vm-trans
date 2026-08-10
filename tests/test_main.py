@@ -27,6 +27,15 @@ def test_main_window_drop_text_set(tmp_path, monkeypatch):
     assert win.dropped_items() == ["C:/a.txt"]
 
 
+def test_main_window_drop_dedups_case_insensitively(tmp_path, monkeypatch):
+    """Windows 下去重应为大小写不敏感(case-sensitive 会重复传输同一文件)。"""
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    win.add_dropped("C:/Data/a.txt")
+    win.add_dropped("c:/data/A.TXT")  # 仅大小写/反斜杠不同
+    assert win.dropped_items() == ["C:/Data/a.txt"]
+
+
 class _RunningWorker(main.TransferWorker):
     """模拟运行中的传输线程(isRunning 恒真,直到手动停止)。"""
 
@@ -86,6 +95,31 @@ def test_close_race_finish_during_dialog(tmp_path, monkeypatch):
     win.closeEvent(event)
     assert event.isAccepted()  # 传输已在对话框期间完成 → 直接关闭,不延迟
     assert state["n"] == 2  # 确认确实走了「对话框后复查」路径
+
+
+def test_main_window_falls_back_on_corrupt_config(tmp_path, monkeypatch):
+    """回归:配置文件损坏时窗口必须仍能打开(默认配置),而不是静默崩溃。"""
+    p = tmp_path / "config.json"
+    p.write_text("{ not json", encoding="utf-8")
+    monkeypatch.setattr(main, "config_path", lambda: str(p))
+    monkeypatch.setattr(main.QMessageBox, "critical", lambda *a, **k: None)
+    win = main.MainWindow()
+    assert win.cfg == main.DEFAULT_CONFIG
+    assert win.count_checkboxes() == 1
+
+
+def test_worker_emits_finished_signal_on_unexpected_error(monkeypatch):
+    """回归:transfer_to_vm 意外抛异常时 finished_signal 仍必须发出(传输按钮才能恢复)。"""
+
+    def boom(vm, items, log, progress=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(main.transfer, "transfer_to_vm", boom)
+    received: list[bool] = []
+    worker = main.TransferWorker([{"name": "A", "ip": "10.0.0.1"}], ["x"])
+    worker.finished_signal.connect(received.append)
+    worker.run()
+    assert received == [False]
 
 
 def test_config_dialog_delete_row():

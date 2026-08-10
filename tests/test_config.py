@@ -1,9 +1,8 @@
-import json
 from pathlib import Path
 
 import pytest
 
-from config import ensure_config, load_config, parse_ip
+from config import ensure_config, load_config, parse_ip, save_config
 
 IPA_OUTPUT = """\
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
@@ -52,13 +51,8 @@ def test_load_config_roundtrip(tmp_path):
     p = str(tmp_path / "config.json")
     cfg = ensure_config(p)
     cfg["vms"][0]["target"] = "/tmp/other"
-    save_config_from_import(p, cfg)
+    save_config(p, cfg)
     assert load_config(p)["vms"][0]["target"] == "/tmp/other"
-
-
-def save_config_from_import(path, cfg):
-    from config import save_config
-    save_config(path, cfg)
 
 
 def test_load_config_invalid_json_raises(tmp_path):
@@ -66,3 +60,22 @@ def test_load_config_invalid_json_raises(tmp_path):
     p.write_text("{ not json", encoding="utf-8")
     with pytest.raises(ValueError):
         load_config(str(p))
+
+
+def test_ensure_config_corrupt_file_raises_valueerror(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ValueError):
+        ensure_config(str(p))
+
+
+def test_ensure_config_unwritable_path_raises_valueerror(tmp_path):
+    p = str(tmp_path / "no" / "such" / "dir" / "config.json")
+    with pytest.raises(ValueError):
+        ensure_config(p)
+
+
+def test_save_config_unwritable_path_raises_valueerror(tmp_path):
+    p = str(tmp_path / "no" / "such" / "dir" / "config.json")
+    with pytest.raises(ValueError):
+        save_config(p, {"vms": []})

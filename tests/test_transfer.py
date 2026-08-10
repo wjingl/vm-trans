@@ -221,3 +221,42 @@ def test_transfer_to_vm_remote_failure_returns_false(tmp_path, monkeypatch):
     logs: list[str] = []
     assert transfer.transfer_to_vm(vm, [str(f)], logs.append) is False
     assert any("✗ 传输失败: 远程命令失败" in line for line in logs)
+
+
+def test_transfer_to_vm_unreadable_item_skipped(tmp_path, monkeypatch):
+    """非 FileNotFoundError 的读取错误(如权限拒绝)也应跳过而非崩溃。"""
+    f = tmp_path / "ok.txt"
+    f.write_text("ok", encoding="utf-8")
+    bad = str(tmp_path / "locked.txt")
+    real_build = transfer.build_file_list
+
+    def fake_build(path):
+        if path == bad:
+            raise PermissionError("拒绝访问")
+        return real_build(path)
+
+    monkeypatch.setattr(transfer, "build_file_list", fake_build)
+    fake_sftp = FakeSFTP()
+    fake_client = FakeSSHClient()
+    monkeypatch.setattr(transfer, "_connect", lambda vm: (fake_client, fake_sftp))
+    vm = {"name": "test", "ip": "10.0.0.1", "target": ""}
+    logs: list[str] = []
+    assert transfer.transfer_to_vm(vm, [bad, str(f)], logs.append) is True
+    assert any(f"✗ {bad}: 无法读取,跳过" in line for line in logs)
+    assert fake_sftp.puts == [(str(f), "/home/wjl/桌面/trans/ok.txt")]
+
+
+def test_transfer_to_vm_close_failure_does_not_mask_result(tmp_path, monkeypatch):
+    """sftp/client close 失败不能掩盖函数返回结果。"""
+    f = tmp_path / "x.txt"
+    f.write_text("x", encoding="utf-8")
+
+    class BoomCloseSFTP(FakeSFTP):
+        def close(self):
+            raise OSError("关闭失败")
+
+    fake_client = FakeSSHClient()
+    monkeypatch.setattr(transfer, "_connect", lambda vm: (fake_client, BoomCloseSFTP()))
+    vm = {"name": "test", "ip": "10.0.0.1", "target": ""}
+    logs: list[str] = []
+    assert transfer.transfer_to_vm(vm, [str(f)], logs.append) is True

@@ -1,6 +1,5 @@
 """SSH/SFTP 传输逻辑。"""
 import os
-import stat
 
 import paramiko
 
@@ -102,6 +101,9 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
         except FileNotFoundError:
             log(f"✗ {item}: 文件不存在,跳过")
             continue
+        except Exception:
+            log(f"✗ {item}: 无法读取,跳过")
+            continue
         valid.append((item, file_count))
     if not valid:
         log("✗ 没有可传输的文件")
@@ -123,7 +125,7 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
             try:
                 sftp.mkdir(desktop)
             except OSError:
-                pass
+                log(f"⚠ 自动创建 {desktop} 失败,按该路径继续尝试")
         if not desktop:
             log("✗ 无法解析桌面目录")
             return False
@@ -145,5 +147,9 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
         log(f"✗ 传输失败: {e}")
         return False
     finally:
-        sftp.close()
-        client.close()
+        # 清理失败不得掩盖函数返回值/异常
+        for closer in (sftp.close, client.close):
+            try:
+                closer()
+            except Exception:
+                pass
