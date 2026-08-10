@@ -53,7 +53,7 @@ def _makedirs(sftp, remote_dir: str) -> None:
         path += "/" + part
         try:
             sftp.stat(path)
-        except FileNotFoundError:
+        except OSError:  # paramiko 5.x 对缺失路径抛普通 IOError(OSError),而非 FileNotFoundError
             sftp.mkdir(path)
 
 
@@ -95,7 +95,18 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
     progress = progress or (lambda done, total: None)
     name = vm.get("name", "")
     log(f"=== 开始传输到 {name} ({vm.get('ip', '')}) ===")
-    total = sum(len(build_file_list(item)) for item in items)
+    valid: list[tuple[str, int]] = []
+    for item in items:
+        try:
+            file_count = len(build_file_list(item))
+        except FileNotFoundError:
+            log(f"✗ {item}: 文件不存在,跳过")
+            continue
+        valid.append((item, file_count))
+    if not valid:
+        log("✗ 没有可传输的文件")
+        return False
+    total = sum(count for _, count in valid)
     done = 0
     try:
         client, sftp = _connect(vm)
@@ -120,7 +131,7 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
         _makedirs(sftp, trans_dir)
         log(f"目标目录: {trans_dir}")
         ok = True
-        for item in items:
+        for item, _ in valid:
             try:
                 paths = sftp_upload_recursive(sftp, item, trans_dir)
                 done += len(paths)
@@ -130,6 +141,9 @@ def transfer_to_vm(vm: dict, items: list[str], log: callable, progress: callable
                 log(f"✗ {os.path.basename(item.rstrip('/\\\\'))}: {e}")
             progress(done, total)
         return ok
+    except Exception as e:
+        log(f"✗ 传输失败: {e}")
+        return False
     finally:
         sftp.close()
         client.close()
