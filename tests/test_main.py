@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtWidgets import QApplication, QPushButton
 
 import main
@@ -18,11 +19,52 @@ def test_main_window_builds(tmp_path, monkeypatch):
     assert win.checkbox_states() == {True}  # 默认勾选
 
 
-def test_main_window_drop_text_set():
+def test_main_window_drop_text_set(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
     win = main.MainWindow()
     win.add_dropped("C:/a.txt")
     win.add_dropped("C:/a.txt")  # 重复去重
     assert win.dropped_items() == ["C:/a.txt"]
+
+
+class _RunningWorker(main.TransferWorker):
+    """模拟运行中的传输线程(isRunning 恒真,直到手动停止)。"""
+
+    def __init__(self):
+        super().__init__([], [])
+        self._running = True
+
+    def isRunning(self):
+        return self._running
+
+
+def test_main_window_close_without_worker(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    event = QCloseEvent()
+    win.closeEvent(event)
+    assert event.isAccepted()  # 无传输 → 直接关闭
+
+
+def test_main_window_close_with_running_worker(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    worker = _RunningWorker()
+    win.worker = worker
+    monkeypatch.setattr(main.QMessageBox, "question",
+                        lambda *a, **k: main.QMessageBox.No)
+    event = QCloseEvent()
+    win.closeEvent(event)
+    assert not event.isAccepted()  # 选「否」→ 取消关闭
+    monkeypatch.setattr(main.QMessageBox, "question",
+                        lambda *a, **k: main.QMessageBox.Yes)
+    event = QCloseEvent()
+    win.closeEvent(event)
+    assert not event.isAccepted()  # 选「是」→ 延迟到传输结束后关闭
+    worker._running = False
+    event = QCloseEvent()
+    win.closeEvent(event)
+    assert event.isAccepted()  # 线程已结束 → 正常关闭
 
 
 def test_config_dialog_delete_row():

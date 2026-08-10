@@ -6,14 +6,14 @@ from datetime import datetime
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QTextEdit, QVBoxLayout,
     QWidget,
 )
 
 import transfer
-from config import config_path, ensure_config, load_config, save_config
+from config import config_path, ensure_config, save_config
 
 
 class TransferWorker(QThread):
@@ -130,6 +130,7 @@ class MainWindow(QMainWindow):
         self.resize(420, 380)
         self.cfg = ensure_config(config_path())
         self.dropped = []
+        self.worker = None  # 传输线程;None 或已结束的线程不影响关闭
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -245,6 +246,25 @@ class MainWindow(QMainWindow):
             self.log("✅ 全部传输完成")
         else:
             self.log("⚠ 部分传输失败,详情见上方日志")
+
+    def closeEvent(self, event):
+        """传输中关窗会销毁运行中的 QThread → 必须拦截。
+
+        选择「是」:非阻塞等待 — 禁用窗口,传输结束后由
+        finished_signal 触发 close() 完成退出(不会销毁运行中的线程)。
+        """
+        worker = self.worker
+        if worker is not None and worker.isRunning():
+            ret = QMessageBox.question(
+                self, "退出确认", "传输正在进行中,确定要退出吗?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ret == QMessageBox.Yes:
+                self.log("⏳ 传输仍在进行,完成后将自动退出…")
+                worker.finished_signal.connect(self.close)
+                self.setEnabled(False)
+            event.ignore()
+            return
+        event.accept()
 
     def log(self, msg: str):
         self.log_view.append(msg)
