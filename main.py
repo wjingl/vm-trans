@@ -259,6 +259,12 @@ class MainWindow(QMainWindow):
                 self, "退出确认", "传输正在进行中,确定要退出吗?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if ret == QMessageBox.Yes:
+                # 对话框的嵌套事件循环运行期间,传输可能已经结束
+                # (finished_signal 已发出),此时再查一次:
+                # 已结束 → 直接正常关闭,不延迟、不连接已发出的信号
+                if not worker.isRunning():
+                    event.accept()
+                    return
                 self.log("⏳ 传输仍在进行,完成后将自动退出…")
                 worker.finished_signal.connect(self.close)
                 self.setEnabled(False)
