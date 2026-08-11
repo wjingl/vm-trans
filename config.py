@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_CONFIG = {
+    "auto_transfer": True,
     "vms": [
         {
             "name": "VMware Ubuntu",

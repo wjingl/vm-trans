@@ -45,6 +45,7 @@ def test_ensure_config_creates_default(tmp_path):
     assert vm["password"] == "114514"
     assert vm["ip"] == "192.168.163.130"
     assert Path(p).exists()
+    assert cfg["auto_transfer"] is True
 
 
 def test_load_config_roundtrip(tmp_path):
