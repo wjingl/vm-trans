@@ -296,3 +296,13 @@ def test_manual_finished_keeps_list(tmp_path, monkeypatch):
     win._auto_mode = False
     win._on_transfer_finished(True)
     assert win.dropped_items() == ["C:/a.txt"]      # 手动模式保留
+
+
+def test_transfer_running_ignores_finished_worker(tmp_path, monkeypatch):
+    """回归:已发完成信号的 worker(线程可能尚未退出)不算进行中,续传不被吞。"""
+    win = _make_win(tmp_path, monkeypatch)
+    worker = _RunningWorker()
+    win.worker = worker
+    assert win._transfer_running() is True
+    win._worker_done = True
+    assert win._transfer_running() is False

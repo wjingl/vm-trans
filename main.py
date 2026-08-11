@@ -201,6 +201,7 @@ class MainWindow(QMainWindow):
         self.dropped = []
         self.dropped_keys = set()  # Windows 下去重键(os.path.normcase)
         self.worker = None  # 传输线程;None 或已结束的线程不影响关闭
+        self._worker_done = False  # finished_signal 已发出(线程可能尚未退出)
         self._auto_mode = False   # 本次传输是否自动触发
         self._batch = []          # 本次传输的快照项(自动模式传完即清)
 
@@ -333,11 +334,14 @@ class MainWindow(QMainWindow):
 
     def dropEvent(self, event):
         self._set_drop_active(False)
+        added_any = False
         for url in event.mimeData().urls():
             if url.isLocalFile():
                 self.add_dropped(url.toLocalFile())
+                added_any = True
         event.acceptProposedAction()
-        self._maybe_auto_start()
+        if added_any:
+            self._maybe_auto_start()
 
     def _set_drop_active(self, active: bool):
         """切换拖放区高亮(dynamic property + QSS [active="true"] 选择器)。"""
@@ -356,7 +360,8 @@ class MainWindow(QMainWindow):
             self.log(f"⚠ 配置保存失败: {e}")
 
     def _transfer_running(self) -> bool:
-        return self.worker is not None and self.worker.isRunning()
+        return (self.worker is not None and self.worker.isRunning()
+                and not self._worker_done)
 
     def _maybe_auto_start(self):
         """自动传输:拖入完成后立即启动(防重入,进行中则忽略)。"""
@@ -381,6 +386,7 @@ class MainWindow(QMainWindow):
             self.log("✗ 请先拖入文件或文件夹")
             return
         self._auto_mode = auto
+        self._worker_done = False  # 新线程启动:复位已完成标记
         self._batch = list(self.dropped)
         self.transfer_btn.setEnabled(False)
         self.log_view.clear()
@@ -393,6 +399,7 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _on_transfer_finished(self, ok: bool):
+        self._worker_done = True  # 信号已发出:该 worker 不再算"进行中"
         self.transfer_btn.setEnabled(True)
         if ok:
             self.log("✅ 全部传输完成")
