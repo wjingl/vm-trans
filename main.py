@@ -1,7 +1,10 @@
 """VM Trans 主窗口:拖拽文件 → 勾选虚拟机 → SFTP 传输。"""
 import os
 import sys
+import threading
 from datetime import datetime
+# 注意:transfer(paramiko)不在启动时导入 —— 窗口先出现,SSH 组件在
+# 后台线程预加载(preload),点击传输时无需等待
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -12,7 +15,6 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-import transfer
 from config import DEFAULT_CONFIG, config_path, ensure_config, save_config
 
 
@@ -79,6 +81,7 @@ class TransferWorker(QThread):
         self.items = items
 
     def run(self):
+        import transfer  # 兜底导入:预热线程通常已完成,此处在子线程内绝不阻塞 UI
         all_ok = True
         try:
             for vm in self.vms:
@@ -251,6 +254,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log_view, 1)
 
         self._rebuild_vm_list()
+        self._preload_transfer()
+
+    def _preload_transfer(self):
+        """窗口出现后立即在后台线程预加载 SSH 组件(paramiko 等)。
+
+        启动阶段不加载它们(窗口更快显示),点击「传输」时通常已加载完毕,
+        传输线程里的 import 仅是兜底(已缓存,无耗时)。
+        """
+        threading.Thread(target=_preload_transfer, daemon=True).start()
 
     @staticmethod
     def _section_label(text: str) -> QLabel:
@@ -385,6 +397,10 @@ class MainWindow(QMainWindow):
         self.log_view.append(msg)
         self.log_view.verticalScrollBar().setValue(
             self.log_view.verticalScrollBar().maximum())
+
+
+def _preload_transfer():
+    import transfer  # noqa: F401 — 预加载 SSH 组件到内存
 
 
 def main():

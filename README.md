@@ -9,7 +9,7 @@
 2. 首次启动自动生成 `config.json`(与 exe 同目录),点「⚙ 配置」编辑
 3. 拖入文件/文件夹 → 勾选虚拟机 → 点「🚀 传输」
 
-> 分发包为 `dist\vm-trans-0.2.zip`:解压后双击文件夹里的 `vm-trans.exe` 即可(启动约 0.8 秒)。
+> 分发包为 `dist\vm-trans-0.3.zip`:解压后双击文件夹里的 `vm-trans.exe` 即可(启动约 0.8 秒)。
 
 ## 配置说明(config.json)
 

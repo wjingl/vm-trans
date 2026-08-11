@@ -112,10 +112,12 @@ def test_main_window_falls_back_on_corrupt_config(tmp_path, monkeypatch):
 def test_worker_emits_finished_signal_on_unexpected_error(monkeypatch):
     """回归:transfer_to_vm 意外抛异常时 finished_signal 仍必须发出(传输按钮才能恢复)。"""
 
+    import transfer  # main 延迟导入 transfer,测试直接 monkeypatch 模块本身
+
     def boom(vm, items, log, progress=None):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(main.transfer, "transfer_to_vm", boom)
+    monkeypatch.setattr(transfer, "transfer_to_vm", boom)
     received: list[bool] = []
     worker = main.TransferWorker([{"name": "A", "ip": "10.0.0.1"}], ["x"])
     worker.finished_signal.connect(received.append)
