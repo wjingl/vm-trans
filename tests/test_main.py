@@ -335,6 +335,24 @@ def test_auto_finished_clears_batch_and_continues(tmp_path, monkeypatch):
     assert calls == [True]                          # 自动续传
 
 
+def test_no_auto_continue_after_confirmed_exit(tmp_path, monkeypatch):
+    """回归:用户确认退出后,自动续传不得再启动新传输。"""
+    win = _make_win(tmp_path, monkeypatch)
+    win.dropped = ["C:/a.txt", "C:/b.txt"]
+    win.dropped_keys = {os.path.normcase("C:/a.txt"), os.path.normcase("C:/b.txt")}
+    win.dropped_list.clear()
+    for i in win.dropped:
+        win.dropped_list.addItem(i)
+    calls = []
+    monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
+    win._batch = ["C:/a.txt"]
+    win._auto_mode = True
+    win._exit_pending = True
+    win._on_transfer_finished(True)
+    assert calls == []                       # 不续传
+    assert win.dropped_items() == ["C:/b.txt"]  # 但清批照常
+
+
 def test_manual_finished_keeps_list(tmp_path, monkeypatch):
     win = _make_win(tmp_path, monkeypatch)
     win.dropped = ["C:/a.txt"]

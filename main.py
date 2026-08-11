@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         self.dropped_keys = set()  # Windows 下去重键(os.path.normcase)
         self.worker = None  # 传输线程;None 或已结束的线程不影响关闭
         self._worker_done = False  # finished_signal 已发出(线程可能尚未退出)
+        self._exit_pending = False  # 用户已确认退出:完成回调不得再自动续传
         self._auto_mode = False   # 本次传输是否自动触发
         self._batch = []          # 本次传输的快照项(自动模式传完即清)
 
@@ -373,10 +374,10 @@ class MainWindow(QMainWindow):
         if dlg.exec_():
             try:
                 save_config(config_path(), self.cfg)
+                self.log("配置已保存")
             except ValueError as e:
                 self.log(f"⚠ 配置保存失败: {e}")
             self._rebuild_vm_list()
-            self.log("配置已保存")
 
     def start_transfer(self, auto: bool = False):
         if self._transfer_running():
@@ -400,7 +401,8 @@ class MainWindow(QMainWindow):
         worker.finished_signal.connect(self._on_transfer_finished)
         old = self.worker
         if old is not None and old.isRunning():
-            old.wait(2000)  # 旧线程正在退出中,有界等待避免销毁运行中的 QThread
+            if not old.wait(2000):  # 旧线程正在退出中,有界等待避免销毁运行中的 QThread
+                self.log("⚠ 旧传输线程未在 2 秒内退出")
         self.worker = worker
         worker.start()
 
@@ -413,8 +415,8 @@ class MainWindow(QMainWindow):
             self.log("⚠ 部分传输失败,详情见上方日志")
         if self._auto_mode:
             self._drop_finished_batch()
-            if self.dropped:
-                # 传输中拖入的新项:自动续传
+            if self.dropped and not self._exit_pending:
+                # 传输中拖入的新项:自动续传(除非用户已确认退出)
                 self.start_transfer(auto=True)
 
     def _drop_finished_batch(self):
@@ -447,6 +449,7 @@ class MainWindow(QMainWindow):
                     event.accept()
                     return
                 self.log("⏳ 传输仍在进行,完成后将自动退出…")
+                self._exit_pending = True  # 已确认退出:完成回调不得再自动续传新项
                 worker.finished_signal.connect(self.close)
                 self.setEnabled(False)
             event.ignore()

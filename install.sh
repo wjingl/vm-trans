@@ -54,9 +54,10 @@ cat > "$HOME/.local/share/applications/vm-trans.desktop" <<EOF
 Type=Application
 Name=VM Trans
 Comment=拖拽文件传输到 Windows 主机
-Exec=$APP_DIR/run.sh
+Exec="$APP_DIR/run.sh"
 Terminal=false
 Categories=Utility;
+Icon=utilities-terminal
 EOF
 
 echo "==> 安装完成!"
