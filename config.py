@@ -23,12 +23,13 @@ _INET_RE = re.compile(r"inet\s+(\d{1,3}(?:\.\d{1,3}){3})/")
 
 
 def config_path() -> str:
-    """与可执行文件(exe)或脚本同目录下的 config.json 绝对路径。"""
+    """配置文件位置:exe 同目录(frozen)/Linux 用户配置目录/脚本同目录。"""
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).parent
-    else:
-        base = Path(__file__).parent
-    return str(base / "config.json")
+        return str(base / "config.json")
+    if os.name != "nt":
+        return os.path.expanduser("~/.config/vm-trans/config.json")
+    return str(Path(__file__).parent / "config.json")
 
 
 def _is_usable_ipv4(ip: str) -> bool:

@@ -1,8 +1,9 @@
+import os
 from pathlib import Path
 
 import pytest
 
-from config import ensure_config, load_config, parse_ip, save_config
+from config import config_path, ensure_config, load_config, parse_ip, save_config
 
 IPA_OUTPUT = """\
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
@@ -80,3 +81,12 @@ def test_save_config_unwritable_path_raises_valueerror(tmp_path):
     p = str(tmp_path / "no" / "such" / "dir" / "config.json")
     with pytest.raises(ValueError):
         save_config(p, {"vms": []})
+
+
+def test_config_path_linux_branch(monkeypatch):
+    """Linux(非 Windows)非 frozen:配置放 ~/.config/vm-trans/。"""
+    import config
+    monkeypatch.setattr(config.os, "name", "posix")
+    monkeypatch.setattr(config.sys, "frozen", False, raising=False)
+    expected = os.path.expanduser("~/.config/vm-trans/config.json")
+    assert config_path() == expected
