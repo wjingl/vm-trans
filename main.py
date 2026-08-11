@@ -260,7 +260,10 @@ class MainWindow(QMainWindow):
 
     def position_on_screen(self) -> tuple[int, int]:
         geo = self.screen().availableGeometry()
-        return compute_window_position(geo.width(), geo.height(), self.width(), self.height())
+        # availableGeometry 可能是非原点屏幕(多显示器),必须加上几何原点偏移,
+        # 否则计算出的绝对坐标会落在错误屏幕上
+        x, y = compute_window_position(geo.width(), geo.height(), self.width(), self.height())
+        return geo.x() + x, geo.y() + y
 
     # ---- 测试钩子 ----
     def count_checkboxes(self) -> int:

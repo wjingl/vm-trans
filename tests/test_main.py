@@ -155,8 +155,9 @@ def test_position_on_screen_uses_available_geometry(tmp_path, monkeypatch):
     win = main.MainWindow()
     x, y = win.position_on_screen()
     geo = win.screen().availableGeometry()
-    assert x == geo.width() - win.width() - 40
-    assert y == (geo.height() - win.height()) // 2
+    # 偏移几何原点:屏幕不在原点(多显示器)时绝对坐标必须包含 geo.x()/geo.y()
+    assert x == geo.x() + geo.width() - win.width() - 40
+    assert y == geo.y() + (geo.height() - win.height()) // 2
 
 
 def test_main_window_drop_through_event_mechanism(tmp_path, monkeypatch):
