@@ -23,6 +23,50 @@ def compute_window_position(screen_w: int, screen_h: int, win_w: int, win_h: int
     return x, y
 
 
+APP_QSS = """
+* { font-family: "Microsoft YaHei"; font-size: 10pt; }
+QMainWindow, QDialog { background: #ffffff; }
+#titleLabel { font-size: 16pt; font-weight: bold; color: #2b3a4a; }
+#subtitleLabel { color: #8a94a6; font-size: 9.5pt; }
+#sectionLabel { font-weight: bold; color: #4a5568; }
+QListWidget {
+    background: #f7f8fa; border: 1px solid #e0e4ea; border-radius: 8px;
+    padding: 4px; font-size: 10.5pt;
+}
+QListWidget::item { padding: 6px; }
+QListWidget::item:selected { background: #e0eefd; color: #1a2733; }
+#dropArea {
+    background: #f0f6ff; border: 2px dashed #4a90d9; border-radius: 12px;
+    color: #4a90d9; font-size: 11pt; padding: 24px;
+}
+#dropArea[active="true"] { background: #e0eefd; border: 2px solid #4a90d9; }
+QPushButton#primaryBtn {
+    background: #4a90d9; color: white; border: none; border-radius: 8px;
+    font-size: 12pt; font-weight: bold; padding: 10px 24px;
+}
+QPushButton#primaryBtn:hover { background: #3d7ec2; }
+QPushButton#primaryBtn:pressed { background: #356faa; }
+QPushButton#primaryBtn:disabled { background: #b8c6d6; color: #f0f3f7; }
+QPushButton#secondaryBtn {
+    background: white; color: #4a90d9; border: 1px solid #4a90d9;
+    border-radius: 8px; padding: 8px 20px;
+}
+QPushButton#secondaryBtn:hover { background: #eef5fc; }
+QTextEdit#logView {
+    background: #f7f8fa; border: 1px solid #e0e4ea; border-radius: 8px;
+    padding: 6px; color: #333333;
+}
+QCheckBox { spacing: 8px; font-size: 10.5pt; }
+QFrame#vmCard {
+    background: #f7f8fa; border: 1px solid #e0e4ea; border-radius: 10px; padding: 8px;
+}
+QScrollBar:vertical { background: transparent; width: 8px; }
+QScrollBar::handle:vertical { background: #c8d2e0; border-radius: 4px; min-height: 24px; }
+QScrollBar::handle:vertical:hover { background: #a8b6c8; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
+"""
+
+
 class TransferWorker(QThread):
     """后台线程执行传输,避免阻塞 UI。"""
 
@@ -57,7 +101,7 @@ class ConfigDialog(QDialog):
         self.cfg = cfg
         self.rows = []
         self.setWindowTitle("虚拟机配置")
-        self.resize(560, 420)
+        self.resize(640, 520)
         layout = QVBoxLayout(self)
 
         hint = QLabel("提示:IP 栏可填纯 IP(如 192.168.163.130),也可整段粘贴 `ip a` 输出,程序自动提取。\n"
@@ -90,7 +134,7 @@ class ConfigDialog(QDialog):
     def _add_row(self, vm=None):
         vm = vm or {"name": "", "user": "", "password": "", "ip": "", "target": ""}
         frame = QFrame()
-        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setObjectName("vmCard")
         form = QFormLayout(frame)
         name = QLineEdit(vm.get("name", ""))
         user = QLineEdit(vm.get("user", ""))
@@ -155,31 +199,41 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 14, 16, 14)
 
-        # 虚拟机多选列表
-        layout.addWidget(QLabel("目标虚拟机:"))
+        title = QLabel("VM Trans")
+        title.setObjectName("titleLabel")
+        subtitle = QLabel("拖拽传文件到虚拟机")
+        subtitle.setObjectName("subtitleLabel")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        layout.addWidget(self._section_label("目标虚拟机"))
         self.vm_list = QListWidget()
-        self.vm_list.setMaximumHeight(90)
+        self.vm_list.setMaximumHeight(100)
         layout.addWidget(self.vm_list)
 
-        # 拖放区域
         self.drop_area = QLabel("把文件/文件夹拖到这里\n(支持多选)", self)
+        self.drop_area.setObjectName("dropArea")
         self.drop_area.setAlignment(Qt.AlignCenter)
-        self.drop_area.setMinimumHeight(80)
-        self.drop_area.setStyleSheet(
-            "QLabel { border: 2px dashed #888; border-radius: 6px; background: #f8f8f8; }"
-        )
+        self.drop_area.setMinimumHeight(150)
         self.drop_area.setAcceptDrops(True)
         layout.addWidget(self.drop_area)
 
+        layout.addWidget(self._section_label("已拖入文件"))
         self.dropped_list = QListWidget()
-        self.dropped_list.setMaximumHeight(80)
+        self.dropped_list.setMaximumHeight(110)
         layout.addWidget(self.dropped_list)
 
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
         self.transfer_btn = QPushButton("🚀 传输")
+        self.transfer_btn.setObjectName("primaryBtn")
+        self.transfer_btn.setMinimumHeight(44)
         self.transfer_btn.clicked.connect(self.start_transfer)
         config_btn = QPushButton("⚙ 配置")
+        config_btn.setObjectName("secondaryBtn")
         config_btn.clicked.connect(self.open_config)
         btn_row.addWidget(self.transfer_btn)
         btn_row.addWidget(config_btn)
@@ -187,11 +241,18 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         self.log_view = QTextEdit()
+        self.log_view.setObjectName("logView")
         self.log_view.setReadOnly(True)
-        self.log_view.setFont(QFont("Consolas", 9))
+        self.log_view.setFont(QFont("Consolas", 10))
         layout.addWidget(self.log_view, 1)
 
         self._rebuild_vm_list()
+
+    @staticmethod
+    def _section_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("sectionLabel")
+        return label
 
     def position_on_screen(self) -> tuple[int, int]:
         geo = self.screen().availableGeometry()
@@ -235,12 +296,27 @@ class MainWindow(QMainWindow):
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
+            self._set_drop_active(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event):
+        self._set_drop_active(False)
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event):
+        self._set_drop_active(False)
         for url in event.mimeData().urls():
             if url.isLocalFile():
                 self.add_dropped(url.toLocalFile())
+        event.acceptProposedAction()
+
+    def _set_drop_active(self, active: bool):
+        """切换拖放区高亮(dynamic property + QSS [active="true"] 选择器)。"""
+        if self.drop_area.property("active") != active:
+            self.drop_area.setProperty("active", active)
+            style = self.drop_area.style()
+            style.unpolish(self.drop_area)
+            style.polish(self.drop_area)
 
     def open_config(self):
         dlg = ConfigDialog(self.cfg, self)
@@ -306,6 +382,7 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setStyleSheet(APP_QSS)
     win = MainWindow()
     x, y = win.position_on_screen()
     win.move(x, y)

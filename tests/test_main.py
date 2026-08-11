@@ -156,3 +156,13 @@ def test_position_on_screen_uses_available_geometry(tmp_path, monkeypatch):
     geo = win.screen().availableGeometry()
     assert x == geo.width() - win.width() - 40
     assert y == (geo.height() - win.height()) // 2
+
+
+def test_drop_area_active_property_toggles(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    assert win.drop_area.property("active") in (None, False)
+    win._set_drop_active(True)
+    assert win.drop_area.property("active") is True
+    win._set_drop_active(False)
+    assert win.drop_area.property("active") is False
