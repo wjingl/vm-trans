@@ -2,7 +2,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtGui import QCloseEvent
+from PyQt5.QtCore import QMimeData, QPoint, Qt, QUrl
+from PyQt5.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PyQt5.QtWidgets import QApplication, QPushButton
 
 import main
@@ -156,6 +157,23 @@ def test_position_on_screen_uses_available_geometry(tmp_path, monkeypatch):
     geo = win.screen().availableGeometry()
     assert x == geo.width() - win.width() - 40
     assert y == (geo.height() - win.height()) // 2
+
+
+def test_main_window_drop_through_event_mechanism(tmp_path, monkeypatch):
+    """回归:日志区不吞拖放,drop 经事件机制冒泡到 MainWindow 生效。"""
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    assert win.log_view.acceptDrops() is False  # 日志区不得吞掉拖拽
+    assert "font-family: Consolas" in main.APP_QSS  # 日志区等宽字体不被全局 QSS 覆盖
+    src = str(tmp_path / "a.txt")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(src)])
+    pos = QPoint(10, 10)
+    QApplication.sendEvent(win, QDragEnterEvent(pos, Qt.CopyAction, mime,
+                                                Qt.LeftButton, Qt.NoModifier))
+    QApplication.sendEvent(win, QDropEvent(pos, Qt.CopyAction, mime,
+                                           Qt.LeftButton, Qt.NoModifier))
+    assert win.dropped_items() == [os.path.normpath(src).replace("\\", "/")]
 
 
 def test_drop_area_active_property_toggles(tmp_path, monkeypatch):

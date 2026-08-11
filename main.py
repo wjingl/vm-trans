@@ -54,7 +54,7 @@ QPushButton#secondaryBtn {
 QPushButton#secondaryBtn:hover { background: #eef5fc; }
 QTextEdit#logView {
     background: #f7f8fa; border: 1px solid #e0e4ea; border-radius: 8px;
-    padding: 6px; color: #333333;
+    padding: 6px; color: #333333; font-family: Consolas;
 }
 QCheckBox { spacing: 8px; font-size: 10.5pt; }
 QFrame#vmCard {
@@ -186,6 +186,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("VM Trans — 拖拽传文件到虚拟机")
         self.resize(640, 560)
+        # 整个窗口都是拖放目标:子控件(如日志区)不接受拖放时事件冒泡到这里处理。
+        # QWidget::event 只把拖放事件分发给 acceptDrops() 为真的控件,所以窗口必须开启。
+        self.setAcceptDrops(True)
         try:
             self.cfg = ensure_config(config_path())
         except (ValueError, OSError) as e:
@@ -243,6 +246,7 @@ class MainWindow(QMainWindow):
         self.log_view = QTextEdit()
         self.log_view.setObjectName("logView")
         self.log_view.setReadOnly(True)
+        self.log_view.setAcceptDrops(False)  # 让拖放冒泡到 MainWindow,否则日志区会吞掉拖拽
         self.log_view.setFont(QFont("Consolas", 10))
         layout.addWidget(self.log_view, 1)
 
