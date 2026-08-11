@@ -49,6 +49,15 @@ def test_ensure_config_creates_default(tmp_path):
     assert cfg["auto_transfer"] is True
 
 
+def test_ensure_config_creates_parent_dir(tmp_path):
+    """回归:配置目录不存在时自动创建(如 Linux 首次运行 ~/.config/vm-trans)。"""
+    p = str(tmp_path / "new" / "sub" / "config.json")
+    cfg = ensure_config(p)
+    assert Path(p).exists()
+    assert Path(p).parent.exists()      # 父目录被自动创建
+    assert cfg["auto_transfer"] is True
+
+
 def test_load_config_roundtrip(tmp_path):
     p = str(tmp_path / "config.json")
     cfg = ensure_config(p)
