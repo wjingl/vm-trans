@@ -271,6 +271,54 @@ def test_start_transfer_reentry_ignored(tmp_path, monkeypatch):
     assert win.worker is running  # 未被替换
 
 
+class _FakeSignal:
+    """最小信号桩:记录 connect 调用,不真正触发。"""
+
+    def __init__(self):
+        self.slots = []
+
+    def connect(self, slot):
+        self.slots.append(slot)
+
+
+class _NoopWorker:
+    """不真正运行的 worker 桩:start 无操作,isRunning False,信号可 connect。"""
+
+    def __init__(self, vms, items):
+        self.vms = vms
+        self.items = items
+        self.log_signal = _FakeSignal()
+        self.finished_signal = _FakeSignal()
+
+    def start(self):
+        pass
+
+    def isRunning(self):
+        return False
+
+    def wait(self, msecs=None):
+        return True
+
+
+def test_start_transfer_waits_for_old_worker(tmp_path, monkeypatch):
+    """回归:替换 worker 前必须等旧线程退出,避免销毁运行中的 QThread。"""
+    win = _make_win(tmp_path, monkeypatch)
+    win.dropped = ["C:/a.txt"]
+    win.dropped_keys = {os.path.normcase("C:/a.txt")}
+    win.dropped_list.addItem("C:/a.txt")
+    old = _RunningWorker()
+    old._running = True
+    win.worker = old
+    win._worker_done = True  # 完成信号已发出、线程仍在退出(自动续传路径)→ 防重入守卫放行
+    waited = []
+    monkeypatch.setattr(old, "wait", lambda msecs=None: waited.append(msecs))
+    monkeypatch.setattr(main, "TransferWorker", _NoopWorker)  # 新 worker 不真跑,避免真实网络连接
+    win.start_transfer()
+    assert waited == [2000]       # 有界等待被调用
+    assert win.worker is not old  # 新 worker 已替换
+    win.worker.wait()             # 收尾:桩等待直接返回,不泄漏线程
+
+
 def test_auto_finished_clears_batch_and_continues(tmp_path, monkeypatch):
     win = _make_win(tmp_path, monkeypatch)
     win.dropped = ["C:/a.txt", "C:/b.txt"]

@@ -395,6 +395,9 @@ class MainWindow(QMainWindow):
         worker = TransferWorker(vms, self._batch)
         worker.log_signal.connect(self.log)
         worker.finished_signal.connect(self._on_transfer_finished)
+        old = self.worker
+        if old is not None and old.isRunning():
+            old.wait(2000)  # 旧线程正在退出中,有界等待避免销毁运行中的 QThread
         self.worker = worker
         worker.start()
 
