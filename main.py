@@ -201,6 +201,8 @@ class MainWindow(QMainWindow):
         self.dropped = []
         self.dropped_keys = set()  # Windows 下去重键(os.path.normcase)
         self.worker = None  # 传输线程;None 或已结束的线程不影响关闭
+        self._auto_mode = False   # 本次传输是否自动触发
+        self._batch = []          # 本次传输的快照项(自动模式传完即清)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -234,6 +236,10 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
+        self.auto_check = QCheckBox("自动传输(拖入后立即传输)")
+        self.auto_check.setChecked(self.cfg.get("auto_transfer", True))
+        self.auto_check.toggled.connect(self._on_auto_toggled)
+        btn_row.addWidget(self.auto_check)
         self.transfer_btn = QPushButton("🚀 传输")
         self.transfer_btn.setObjectName("primaryBtn")
         self.transfer_btn.setMinimumHeight(44)
@@ -296,6 +302,8 @@ class MainWindow(QMainWindow):
             self.dropped.append(norm)
             self.dropped_keys.add(key)
             self.dropped_list.addItem(norm)
+            if self.auto_check.isChecked() and not self._transfer_running():
+                self.start_transfer(auto=True)
 
     # ---- 界面逻辑 ----
     def _rebuild_vm_list(self):
@@ -328,6 +336,8 @@ class MainWindow(QMainWindow):
             if url.isLocalFile():
                 self.add_dropped(url.toLocalFile())
         event.acceptProposedAction()
+        if self.auto_check.isChecked() and not self._transfer_running():
+            self.start_transfer(auto=True)
 
     def _set_drop_active(self, active: bool):
         """切换拖放区高亮(dynamic property + QSS [active="true"] 选择器)。"""
@@ -337,6 +347,17 @@ class MainWindow(QMainWindow):
             style.unpolish(self.drop_area)
             style.polish(self.drop_area)
 
+    def _on_auto_toggled(self, checked: bool):
+        """自动传输开关:立即记忆到配置(无需点传输)。"""
+        self.cfg["auto_transfer"] = checked
+        try:
+            save_config(config_path(), self.cfg)
+        except ValueError as e:
+            self.log(f"⚠ 配置保存失败: {e}")
+
+    def _transfer_running(self) -> bool:
+        return self.worker is not None and self.worker.isRunning()
+
     def open_config(self):
         dlg = ConfigDialog(self.cfg, self)
         if dlg.exec_():
@@ -344,7 +365,9 @@ class MainWindow(QMainWindow):
             self._rebuild_vm_list()
             self.log("配置已保存")
 
-    def start_transfer(self):
+    def start_transfer(self, auto: bool = False):
+        if self._transfer_running():
+            return  # 防重入:传输进行中忽略(自动触发路径保护)
         vms = self._selected_vms()
         if not vms:
             self.log("✗ 请至少勾选一台虚拟机")
@@ -352,10 +375,13 @@ class MainWindow(QMainWindow):
         if not self.dropped:
             self.log("✗ 请先拖入文件或文件夹")
             return
+        self._auto_mode = auto
+        self._batch = list(self.dropped)
         self.transfer_btn.setEnabled(False)
         self.log_view.clear()
-        self.log(f"[{datetime.now():%H:%M:%S}] 开始传输 {len(self.dropped)} 项 → {len(vms)} 台虚拟机")
-        worker = TransferWorker(vms, list(self.dropped))
+        prefix = "⏩ 自动传输" if auto else "开始传输"
+        self.log(f"[{datetime.now():%H:%M:%S}] {prefix} {len(self.dropped)} 项 → {len(vms)} 台虚拟机")
+        worker = TransferWorker(vms, self._batch)
         worker.log_signal.connect(self.log)
         worker.finished_signal.connect(self._on_transfer_finished)
         self.worker = worker
@@ -367,6 +393,22 @@ class MainWindow(QMainWindow):
             self.log("✅ 全部传输完成")
         else:
             self.log("⚠ 部分传输失败,详情见上方日志")
+        if self._auto_mode:
+            self._drop_finished_batch()
+            if self.dropped:
+                # 传输中拖入的新项:自动续传
+                self.start_transfer(auto=True)
+
+    def _drop_finished_batch(self):
+        """自动模式:移除本次已传项(传完即清),保留传输中拖入的新项。"""
+        for item in self._batch:
+            if item in self.dropped:
+                self.dropped.remove(item)
+                self.dropped_keys.discard(os.path.normcase(item))
+        self.dropped_list.clear()
+        for item in self.dropped:
+            self.dropped_list.addItem(item)
+        self._batch = []
 
     def closeEvent(self, event):
         """传输中关窗会销毁运行中的 QThread → 必须拦截。

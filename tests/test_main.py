@@ -1,3 +1,4 @@
+import json
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -23,6 +24,7 @@ def test_main_window_builds(tmp_path, monkeypatch):
 def test_main_window_drop_text_set(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
     win = main.MainWindow()
+    win.auto_check.setChecked(False)  # 自动传输会启动真实传输线程;此测试只验证拖放链路本身
     win.add_dropped("C:/a.txt")
     win.add_dropped("C:/a.txt")  # 重复去重
     assert win.dropped_items() == ["C:/a.txt"]
@@ -32,6 +34,7 @@ def test_main_window_drop_dedups_case_insensitively(tmp_path, monkeypatch):
     """Windows 下去重应为大小写不敏感(case-sensitive 会重复传输同一文件)。"""
     monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
     win = main.MainWindow()
+    win.auto_check.setChecked(False)  # 自动传输会启动真实传输线程;此测试只验证去重逻辑
     win.add_dropped("C:/Data/a.txt")
     win.add_dropped("c:/data/A.TXT")  # 仅大小写/反斜杠不同
     assert win.dropped_items() == ["C:/Data/a.txt"]
@@ -166,6 +169,7 @@ def test_main_window_drop_through_event_mechanism(tmp_path, monkeypatch):
     """回归:日志区不吞拖放,drop 经事件机制冒泡到 MainWindow 生效。"""
     monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
     win = main.MainWindow()
+    win.auto_check.setChecked(False)  # 自动传输会启动真实传输线程;此测试只验证拖放事件链路
     assert win.log_view.acceptDrops() is False  # 日志区不得吞掉拖拽
     assert "font-family: Consolas" in main.APP_QSS  # 日志区等宽字体不被全局 QSS 覆盖
     src = str(tmp_path / "a.txt")
@@ -187,3 +191,97 @@ def test_drop_area_active_property_toggles(tmp_path, monkeypatch):
     assert win.drop_area.property("active") is True
     win._set_drop_active(False)
     assert win.drop_area.property("active") is False
+
+
+def _make_win(tmp_path, monkeypatch, cfg_extra=None):
+    """构造 MainWindow,config 写入 tmp_path。"""
+    import json
+    from config import DEFAULT_CONFIG
+    cfg = json.loads(json.dumps(DEFAULT_CONFIG))
+    if cfg_extra:
+        cfg.update(cfg_extra)
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(main, "config_path", lambda: str(p))
+    return main.MainWindow()
+
+
+def test_auto_check_default_on_and_memory(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)  # 无 auto_transfer 字段 → 默认开
+    assert win.auto_check.isChecked() is True
+
+
+def test_auto_check_off_remembered(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch, {"auto_transfer": False})
+    assert win.auto_check.isChecked() is False
+    # 切换回开 → 立即写回配置
+    win.auto_check.setChecked(True)
+    assert json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))["auto_transfer"] is True
+
+
+def test_drop_triggers_auto_transfer(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
+    win.add_dropped("C:/a.txt")
+    assert calls == [True]  # 自动触发
+
+
+def test_drop_no_trigger_when_auto_off(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch, {"auto_transfer": False})
+    calls = []
+    monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
+    win.add_dropped("C:/a.txt")
+    assert calls == []  # 手动模式不自动触发
+
+
+def test_drop_no_trigger_while_transfer_running(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
+    class Running:
+        def isRunning(self):
+            return True
+    win.worker = Running()
+    win.add_dropped("C:/a.txt")  # 传输中 → 不触发,排队
+    assert calls == []
+    assert "C:/a.txt" in win.dropped_items()
+
+
+def test_start_transfer_reentry_ignored(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)
+    class Running:
+        def isRunning(self):
+            return True
+    running = Running()
+    win.worker = running
+    win.add_dropped("C:/a.txt")
+    win.start_transfer()  # 防重入:直接忽略
+    assert win.worker is running  # 未被替换
+
+
+def test_auto_finished_clears_batch_and_continues(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)
+    win.dropped = ["C:/a.txt", "C:/b.txt"]
+    win.dropped_keys = {os.path.normcase("C:/a.txt"), os.path.normcase("C:/b.txt")}
+    win.dropped_list.clear()
+    for i in win.dropped:
+        win.dropped_list.addItem(i)
+    calls = []
+    monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
+    win._batch = ["C:/a.txt"]      # 本次只传了 a
+    win._auto_mode = True
+    win._on_transfer_finished(True)
+    assert win.dropped_items() == ["C:/b.txt"]      # a 已清,b 保留
+    assert calls == [True]                          # 自动续传
+
+
+def test_manual_finished_keeps_list(tmp_path, monkeypatch):
+    win = _make_win(tmp_path, monkeypatch)
+    win.dropped = ["C:/a.txt"]
+    win.dropped_list.clear()
+    win.dropped_list.addItem("C:/a.txt")
+    win._batch = ["C:/a.txt"]
+    win._auto_mode = False
+    win._on_transfer_finished(True)
+    assert win.dropped_items() == ["C:/a.txt"]      # 手动模式保留
