@@ -32,8 +32,18 @@
 
 1. 启用 OpenSSH 服务器:设置 → 系统 → 可选功能 → 添加功能 → OpenSSH 服务器
 2. 启动服务:`Start-Service sshd`;设置 → 应用 → 启动,将 OpenSSH Server 设为自动
-3. 防火墙放行 22 端口(启用服务时通常自动添加规则)
+3. 防火墙放行 22 端口(启用服务时通常自动添加规则);建议限制来源为
+   VMnet8 网段:`Set-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -RemoteAddress '192.168.163.0/24'`(需管理员)
 4. 确认 VM 可访问主机:`ping 192.168.163.1`(VMnet8 网关地址,与虚拟机同网段)
+
+### 获取部署文件
+
+`dist/vm-trans-linux.zip` 内含 4 个文件:`main.py`、`config.py`、
+`transfer.py`、`install.sh`。拷入虚拟机的方式任选:
+
+- VMware 虚拟机设置 → 选项 → 共享文件夹(临时开一次,拷完可关)
+- VMware 拖拽(已装 open-vm-tools 时)
+- 虚拟机内挂载主机共享/光盘
 
 ### 虚拟机内安装
 
