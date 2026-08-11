@@ -302,8 +302,9 @@ class MainWindow(QMainWindow):
             self.dropped.append(norm)
             self.dropped_keys.add(key)
             self.dropped_list.addItem(norm)
-            if self.auto_check.isChecked() and not self._transfer_running():
-                self.start_transfer(auto=True)
+            # 注意:此处不触发自动传输 —— 一次拖入多个文件会多次调用
+            # add_dropped,首个文件就触发会把批次拆成 1 + N-1;
+            # 自动传输只在 dropEvent 末尾(_maybe_auto_start)统一触发一次
 
     # ---- 界面逻辑 ----
     def _rebuild_vm_list(self):
@@ -336,8 +337,7 @@ class MainWindow(QMainWindow):
             if url.isLocalFile():
                 self.add_dropped(url.toLocalFile())
         event.acceptProposedAction()
-        if self.auto_check.isChecked() and not self._transfer_running():
-            self.start_transfer(auto=True)
+        self._maybe_auto_start()
 
     def _set_drop_active(self, active: bool):
         """切换拖放区高亮(dynamic property + QSS [active="true"] 选择器)。"""
@@ -357,6 +357,11 @@ class MainWindow(QMainWindow):
 
     def _transfer_running(self) -> bool:
         return self.worker is not None and self.worker.isRunning()
+
+    def _maybe_auto_start(self):
+        """自动传输:拖入完成后立即启动(防重入,进行中则忽略)。"""
+        if self.auto_check.isChecked() and not self._transfer_running():
+            self.start_transfer(auto=True)
 
     def open_config(self):
         dlg = ConfigDialog(self.cfg, self)

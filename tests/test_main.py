@@ -220,11 +220,20 @@ def test_auto_check_off_remembered(tmp_path, monkeypatch):
 
 
 def test_drop_triggers_auto_transfer(tmp_path, monkeypatch):
+    """回归:一次多文件拖入只触发一次自动传输(整体批次,而非逐文件触发)。"""
     win = _make_win(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
-    win.add_dropped("C:/a.txt")
-    assert calls == [True]  # 自动触发
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(tmp_path / "a.txt")),
+                  QUrl.fromLocalFile(str(tmp_path / "b.txt"))])
+    pos = QPoint(10, 10)
+    QApplication.sendEvent(win, QDragEnterEvent(pos, Qt.CopyAction, mime,
+                                                Qt.LeftButton, Qt.NoModifier))
+    QApplication.sendEvent(win, QDropEvent(pos, Qt.CopyAction, mime,
+                                           Qt.LeftButton, Qt.NoModifier))
+    assert calls == [True]  # 两个文件 → 只在拖放结束时触发一次
+    assert len(win.dropped_items()) == 2  # 两项整体入队,未被拆分成两次传输
 
 
 def test_drop_no_trigger_when_auto_off(tmp_path, monkeypatch):
@@ -232,6 +241,7 @@ def test_drop_no_trigger_when_auto_off(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(win, "start_transfer", lambda auto=False: calls.append(auto))
     win.add_dropped("C:/a.txt")
+    win._maybe_auto_start()  # 拖放结束触发点
     assert calls == []  # 手动模式不自动触发
 
 
@@ -244,6 +254,7 @@ def test_drop_no_trigger_while_transfer_running(tmp_path, monkeypatch):
             return True
     win.worker = Running()
     win.add_dropped("C:/a.txt")  # 传输中 → 不触发,排队
+    win._maybe_auto_start()  # 拖放结束触发点
     assert calls == []
     assert "C:/a.txt" in win.dropped_items()
 
