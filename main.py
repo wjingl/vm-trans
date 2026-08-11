@@ -371,7 +371,10 @@ class MainWindow(QMainWindow):
     def open_config(self):
         dlg = ConfigDialog(self.cfg, self)
         if dlg.exec_():
-            save_config(config_path(), self.cfg)
+            try:
+                save_config(config_path(), self.cfg)
+            except ValueError as e:
+                self.log(f"⚠ 配置保存失败: {e}")
             self._rebuild_vm_list()
             self.log("配置已保存")
 

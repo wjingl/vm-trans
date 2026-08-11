@@ -55,6 +55,10 @@ def parse_ip(text: str) -> str:
 
 
 def ensure_config(path: str) -> dict:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)  # 首次运行确保配置目录存在
+    except OSError as e:
+        raise ValueError(f"配置文件 {path} 无法写入: {e}")
     if not os.path.exists(path):
         save_config(path, DEFAULT_CONFIG)
     return load_config(path)

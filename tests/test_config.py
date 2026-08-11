@@ -72,13 +72,17 @@ def test_ensure_config_corrupt_file_raises_valueerror(tmp_path):
 
 
 def test_ensure_config_unwritable_path_raises_valueerror(tmp_path):
-    p = str(tmp_path / "no" / "such" / "dir" / "config.json")
+    blocker = tmp_path / "blocker"
+    blocker.write_text("file", encoding="utf-8")
+    p = str(blocker / "config.json")  # 父路径是普通文件 → NotADirectoryError
     with pytest.raises(ValueError):
         ensure_config(p)
 
 
 def test_save_config_unwritable_path_raises_valueerror(tmp_path):
-    p = str(tmp_path / "no" / "such" / "dir" / "config.json")
+    blocker = tmp_path / "blocker"
+    blocker.write_text("file", encoding="utf-8")
+    p = str(blocker / "config.json")  # 父路径是普通文件 → NotADirectoryError
     with pytest.raises(ValueError):
         save_config(p, {"vms": []})
 
