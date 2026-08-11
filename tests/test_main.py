@@ -135,3 +135,24 @@ def test_config_dialog_delete_row():
     del_btn.click()
     assert len(dlg.rows) == 1
     assert dlg.rows[0][1].text() == "B"
+
+
+def test_compute_window_position_right_middle():
+    x, y = main.compute_window_position(1920, 1080, 640, 560)
+    assert x == 1920 - 640 - 40
+    assert y == (1080 - 560) // 2
+
+
+def test_compute_window_position_clamps_small_screen():
+    x, y = main.compute_window_position(600, 400, 640, 560)
+    assert x == 0
+    assert y == 0
+
+
+def test_position_on_screen_uses_available_geometry(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "config_path", lambda: str(tmp_path / "config.json"))
+    win = main.MainWindow()
+    x, y = win.position_on_screen()
+    geo = win.screen().availableGeometry()
+    assert x == geo.width() - win.width() - 40
+    assert y == (geo.height() - win.height()) // 2

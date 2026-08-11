@@ -16,6 +16,13 @@ import transfer
 from config import DEFAULT_CONFIG, config_path, ensure_config, save_config
 
 
+def compute_window_position(screen_w: int, screen_h: int, win_w: int, win_h: int, margin: int = 40) -> tuple[int, int]:
+    """主屏右缘 margin 像素、垂直居中的窗口位置;屏幕小于窗口时贴左上角。"""
+    x = max(0, screen_w - win_w - margin)
+    y = max(0, (screen_h - win_h) // 2)
+    return x, y
+
+
 class TransferWorker(QThread):
     """后台线程执行传输,避免阻塞 UI。"""
 
@@ -134,7 +141,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VM Trans — 拖拽传文件到虚拟机")
-        self.resize(420, 380)
+        self.resize(640, 560)
         try:
             self.cfg = ensure_config(config_path())
         except (ValueError, OSError) as e:
@@ -185,6 +192,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log_view, 1)
 
         self._rebuild_vm_list()
+
+    def position_on_screen(self) -> tuple[int, int]:
+        geo = self.screen().availableGeometry()
+        return compute_window_position(geo.width(), geo.height(), self.width(), self.height())
 
     # ---- 测试钩子 ----
     def count_checkboxes(self) -> int:
@@ -296,6 +307,8 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     win = MainWindow()
+    x, y = win.position_on_screen()
+    win.move(x, y)
     win.show()
     sys.exit(app.exec_())
 
