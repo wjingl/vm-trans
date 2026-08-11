@@ -57,12 +57,13 @@ cd /w/0_proj/VM_TRAN
 
 ### 3c. 上传资产 —— 网络特殊处理(关键!)
 
-**网络环境**:本机对 GitHub 存在中间设备干扰:
+**网络环境(重要:未使用任何网关/代理/端口转发,全部为 GitHub 节点直连)**:
+- 本机对 GitHub 存在中间设备干扰,但没有配置任何代理、网关或 hosts 修改 —— 处理全部在命令行完成
 - `api.github.com` 直连正常(HTTP 200)
 - `uploads.github.com` 默认解析到新加坡节点(20.205.243.161),**gh 直接上传会报 HTTP 400**
 - 实测 `uploads.github.com` 强制解析到 **20.205.243.161** 后上传成功(HTTP 201)
 
-因此**不要用 `gh release upload`**,改用 curl + `--resolve` 指定可用 IP:
+因此**不要用 `gh release upload`**,改用 curl + `--resolve` 指定可用 IP(--resolve 是一次性命令行参数,不改系统任何配置,无需管理员权限):
 
 ```bash
 TOKEN=$(grep -o 'github_pat_[A-Za-z0-9_]*' "C:/Users/wjl/Desktop/快捷配置信息.txt" | head -1)
@@ -94,6 +95,15 @@ done
 - `20.205.243.166`:301(不是上传端点)
 - `185.199.108.133`(Pages CDN):405,不能上传
 - `140.82.x.x`:400(中间干扰)
+
+### 两种网络处理方式对比(都无需网关/代理)
+
+| 方式 | 命令 | 是否需管理员 | 持久性 |
+|---|---|---|---|
+| **命令行 --resolve(推荐,本次采用)** | 每条 curl 加 `--resolve uploads.github.com:443:20.205.243.161` | 否 | 一次性,不落盘 |
+| hosts 记录 | 在 `C:\Windows\System32\drivers\etc\hosts` 加 `20.205.243.161 uploads.github.com` | 是(需管理员) | 持久,但域名 IP 变更后需维护 |
+
+推荐用命令行方式:零系统改动、无残留。若频繁发布嫌麻烦,才考虑 hosts。
 
 ## 5. 验证清单
 
